@@ -1,6 +1,8 @@
 services:
   devpi:
     build: .
+    environment:
+      - DEVPI_OUTSIDE_URL=${DEVPI_OUTSIDE_URL:-}
     volumes:
       - devpi-data:/data
     restart: unless-stopped
