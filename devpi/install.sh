@@ -31,6 +31,16 @@ if [ -z "${DEVPI_PASSWORD}" ]; then
   echo "自动生成的密码: ${DEVPI_PASSWORD}(请当场保存,后面查不回来明文)"
 fi
 
+read -r -p "对外访问的域名(比如 https://devpi.example.com,还没配好域名的话直接回车留空,只在内网用): " DEVPI_OUTSIDE_URL
+
+if [ -n "${DEVPI_OUTSIDE_URL}" ]; then
+  echo "DEVPI_OUTSIDE_URL=${DEVPI_OUTSIDE_URL}" > .env
+  PUBLIC_BASE="${DEVPI_OUTSIDE_URL}"
+else
+  rm -f .env
+  PUBLIC_BASE="http://localhost:3141"
+fi
+
 echo "==> 生成 Caddy Basic Auth 密码哈希"
 mkdir -p caddy
 HASH="$(docker run --rm caddy:2-alpine caddy hash-password --plaintext "${DEVPI_PASSWORD}")"
@@ -48,7 +58,7 @@ docker compose up -d --build
 
 echo "==> 等待 devpi-server 就绪"
 for i in $(seq 1 30); do
-  if docker compose exec -T devpi curl -sf http://localhost:3141/root/pypi/ >/dev/null 2>&1; then
+  if docker compose exec -T devpi python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:3141/root/pypi/')" >/dev/null 2>&1; then
     break
   fi
   sleep 1
@@ -68,16 +78,25 @@ docker compose exec -T devpi devpi index -c prod bases=root/pypi >/dev/null 2>&1
 echo ""
 echo "==================================================="
 echo "部署完成"
-echo "地址: http://localhost:3141/vendor/prod/"
+echo "地址: ${PUBLIC_BASE}/vendor/prod/"
 echo "账号: vendor"
 echo "密码: ${DEVPI_PASSWORD}"
 echo ""
+PUBLIC_SCHEME="${PUBLIC_BASE%%://*}"
+PUBLIC_HOST="${PUBLIC_BASE#*://}"
 echo "上传(在项目目录下,先 uv build 出 wheel):"
-echo "  devpi use http://vendor:${DEVPI_PASSWORD}@localhost:3141/vendor/prod"
+echo "  devpi use ${PUBLIC_SCHEME}://vendor:${DEVPI_PASSWORD}@${PUBLIC_HOST}/vendor/prod"
 echo "  devpi upload dist/*.whl"
 echo ""
-echo "消费方 pyproject.toml 加索引:"
+echo "消费方 pyproject.toml 加索引(账号密码不要写进去,用环境变量传,见 devpi/README.md):"
 echo "  [[tool.uv.index]]"
 echo "  name = \"internal\""
-echo "  url = \"http://vendor:${DEVPI_PASSWORD}@localhost:3141/vendor/prod/+simple/\""
+echo "  url = \"${PUBLIC_BASE}/vendor/prod/+simple/\""
+if [ -z "${DEVPI_OUTSIDE_URL}" ]; then
+  echo ""
+  echo "现在只在内网用,以后要接 GitHub Actions 之类的云端 CI,得先给这台机器配一个"
+  echo "公网能访问的域名(跟 Harbor 当初配 Cloudflare 隧道一样),然后重新跑一遍本脚本"
+  echo "并在提示时填那个域名——devpi-server 需要知道自己对外的真实地址才能正确处理"
+  echo "登录/上传请求,不是配好域名转发就行。"
+fi
 echo "==================================================="
