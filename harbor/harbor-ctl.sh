@@ -9,6 +9,17 @@
 
 set -euo pipefail
 
+if ! command -v docker >/dev/null 2>&1; then
+  echo "错误: 没有检测到 Docker,先装好 Docker(和 docker compose 插件)再跑本脚本。" >&2
+  exit 1
+fi
+
+if ! docker info >/dev/null 2>&1; then
+  echo "错误: 当前用户跑不动 docker(通常是没在 docker 用户组里)。" >&2
+  echo "  用 root 跑本脚本,或者 sudo usermod -aG docker \$USER 之后重新登录一次再跑。" >&2
+  exit 1
+fi
+
 HARBOR_VERSION="${HARBOR_VERSION:-v2.15.2}"
 INSTALL_DIR="${HARBOR_INSTALL_DIR:-$HOME/harbor-install}"
 HARBOR_DIR="${INSTALL_DIR}/harbor"

@@ -5,6 +5,22 @@
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
+if ! command -v docker >/dev/null 2>&1; then
+  echo "错误: 没有检测到 Docker,先装好 Docker(和 docker compose 插件)再跑本脚本。" >&2
+  exit 1
+fi
+
+if ! docker info >/dev/null 2>&1; then
+  echo "错误: 当前用户跑不动 docker(通常是没在 docker 用户组里)。" >&2
+  echo "  用 root 跑本脚本,或者 sudo usermod -aG docker \$USER 之后重新登录一次再跑。" >&2
+  exit 1
+fi
+
+if ! docker compose version >/dev/null 2>&1; then
+  echo "错误: 没有 docker compose 插件,请检查 Docker 安装是否完整" >&2
+  exit 1
+fi
+
 echo "==================================================="
 echo " devpi 私有包索引 部署"
 echo "==================================================="
