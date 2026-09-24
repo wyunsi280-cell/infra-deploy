@@ -1,2 +1,3 @@
 **/caddy/Caddyfile
+**/caddy/consumers.txt
 devpi/.env

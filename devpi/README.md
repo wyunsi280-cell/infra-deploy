@@ -5,10 +5,15 @@
 ## 部署
 
 ```bash
-./install.sh
+./devpi-ctl.sh
 ```
 
-会交互问一次密码(回车自动生成),部署完打印出地址、账号密码,以及发布方/消费方各自要怎么配置。
+不带参数直接运行是交互菜单(装/查状态/发协作者账号/收协作者账号),跟 `harbor-ctl.sh` 一样的风格,不用记参数。
+
+## 账号模型
+
+- `vendor`:读+写(上传新版本用这个),密码在 `devpi-ctl.sh` 菜单选 1 部署时设置
+- 协作者/下游项目 CI:只读,菜单选 3 单独发一个,选 5 单独收回——**这层权限在 Caddy 的 Basic Auth,不在 devpi 自己的用户系统里**,收回一个人不影响别人也不影响 vendor
 
 ## 发布一个新版本(以 fastapi-admin-core 为例)
 
@@ -16,9 +21,11 @@
 
 ```bash
 uv build   # 产出的 wheel 里是编译后的 .so,前提是 pyproject.toml 配了 hatch build hook(见下方)
-devpi use http://vendor:<密码>@localhost:3141/vendor/prod
+devpi use "https://vendor:<密码>@devpi.example.com/vendor/prod"
 devpi upload dist/*.whl
 ```
+
+**账号密码必须直接嵌在 `devpi use` 的 URL 里**,不能只在后面 `devpi login` 时才带——`devpi use` 自己会先探测一次 `+api` 端点,这个端点也在 Caddy 的 Basic Auth 后面,没带凭证的探测请求会被 401,导致客户端没能正确记住当前指向哪个 index,后面 `login`/`upload` 会用到过期缓存的地址,一样失败(实测踩过)。
 
 `pyproject.toml` 需要一个 build hook,保证 wheel 打上正确的平台标签(`cp313-cp313-linux_x86_64`),不是默认的 `py3-none-any`(那个标签意味着"纯 Python、任何平台通用",对编译后的 `.so` 来说是错的,装到不兼容的环境会静默失败):
 
@@ -40,12 +47,12 @@ class NativeTagHook(BuildHookInterface):
 
 ## 消费方怎么装
 
-`pyproject.toml`:
+`pyproject.toml`(账号密码不写在这里,这个文件要提交到 git):
 
 ```toml
 [[tool.uv.index]]
 name = "internal"
-url = "http://vendor:<密码>@localhost:3141/vendor/prod/+simple/"
+url = "https://devpi.example.com/vendor/prod/+simple/"
 
 [project]
 dependencies = [
@@ -53,11 +60,14 @@ dependencies = [
 ]
 ```
 
+密码通过环境变量传,`uv` 支持 `UV_INDEX_<NAME大写>_USERNAME`/`UV_INDEX_<NAME大写>_PASSWORD`(index 名叫 `internal` 就是 `UV_INDEX_INTERNAL_USERNAME`/`UV_INDEX_INTERNAL_PASSWORD`):
+
+```bash
+UV_INDEX_INTERNAL_USERNAME=vendor UV_INDEX_INTERNAL_PASSWORD=<密码> uv sync
+```
+
 正常 `uv sync`/`uv add` 即可,依赖(`fastapi`/`sqlalchemy`等)会跟着 wheel 的 METADATA 自动解析安装,不用手动抄一份依赖清单。
 
-CI 里用环境变量传密码,不要把密码硬编码进 `pyproject.toml`:
+**发新版本后记得 `uv lock --upgrade-package <包名>`**——`uv.lock` 锁的是具体版本号,devpi 上有新版本不会让已有项目自动跳过去,得显式升级锁文件(实测踩过:发了新版本,消费方一直没装上,以为哪里坏了,其实只是锁文件没更新)。
 
-```toml
-url = "http://vendor:${UV_INDEX_INTERNAL_PASSWORD}@localhost:3141/vendor/prod/+simple/"
-```
-(uv 支持 `UV_INDEX_<NAME>_USERNAME`/`UV_INDEX_<NAME>_PASSWORD` 环境变量,也支持直接在 url 里嵌变量,两种都行)
+Docker 构建时(`build-and-publish.sh`)用 `DEVPI_INDEX_URL` 环境变量传完整地址(含账号密码),脚本会通过 BuildKit secret 注入,不会写进镜像层。
