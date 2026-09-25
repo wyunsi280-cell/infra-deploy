@@ -193,6 +193,15 @@ EOF
 fi
 chmod +x publish.sh
 
+echo "==> 写一个占位测试(没有它的话,第一次 CI 跑 pytest 会因为\"0 个测试\"报错退出,
+误导人以为哪里坏了——等你写了真测试,把这个占位的删掉就行)"
+mkdir -p tests
+cat > tests/test_placeholder.py << 'EOF'
+def test_placeholder():
+    """占位测试,写了真测试之后删掉这个文件。"""
+    assert True
+EOF
+
 echo "==> 写 CI 配置"
 mkdir -p .github/workflows
 cat > .github/workflows/test.yml << 'EOF'
