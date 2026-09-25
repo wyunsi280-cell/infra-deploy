@@ -9,20 +9,21 @@
 | 目录 | 是什么 | 一行安装 |
 |---|---|---|
 | [`harbor/`](./harbor) | Docker 镜像仓库(Harbor),给客户发独立拉取权限用 | `curl -fsSL https://raw.githubusercontent.com/wyunsi280-cell/infra-deploy/main/harbor/harbor-ctl.sh \| bash -s -- install` |
-| [`devpi/`](./devpi) | 私有 Python 包索引,内部库(比如 `fastapi-admin-core`)编译成 `.so` 后发布到这里,正常 `pip install` | 见下方 |
+| [`devpi/`](./devpi) | 私有 Python 包索引,内部库(比如 `fastapi-admin-core`)编译成 `.so` 后发布到这里,正常 `pip install` | `curl -fsSL https://raw.githubusercontent.com/wyunsi280-cell/infra-deploy/main/devpi/bootstrap.sh \| bash` |
 
 ## devpi 部署
 
+`devpi-ctl.sh` 自己不够——它要跟 `Dockerfile`/`entrypoint.sh`/`docker-compose.yml` 放一起才能 `docker compose` 起来,所以真正的一行安装是 `bootstrap.sh`(先把这几个文件拉齐,再跑 `devpi-ctl.sh install`):
+
 ```bash
-curl -fsSL https://raw.githubusercontent.com/wyunsi280-cell/infra-deploy/main/devpi/devpi-ctl.sh -o /tmp/devpi-devpi-ctl.sh
-mkdir -p ~/infra/devpi && cd ~/infra/devpi
-curl -fsSL https://raw.githubusercontent.com/wyunsi280-cell/infra-deploy/main/devpi/Dockerfile -o Dockerfile
-curl -fsSL https://raw.githubusercontent.com/wyunsi280-cell/infra-deploy/main/devpi/entrypoint.sh -o entrypoint.sh
-curl -fsSL https://raw.githubusercontent.com/wyunsi280-cell/infra-deploy/main/devpi/docker-compose.yml -o docker-compose.yml
-bash /tmp/devpi-devpi-ctl.sh
+curl -fsSL https://raw.githubusercontent.com/wyunsi280-cell/infra-deploy/main/devpi/bootstrap.sh | bash
 ```
 
-(需要 build context 里的文件,所以不是单纯一行 `curl | bash`——上面这几行把需要的文件都拉齐再跑安装脚本。以后如果嫌麻烦可以把这几行包成一个 `bootstrap.sh` 只用一行调。)
+装到别的目录(默认是 `~/infra/devpi`):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/wyunsi280-cell/infra-deploy/main/devpi/bootstrap.sh | bash -s -- /custom/path
+```
 
 装完是:
 - `devpi-server`(私有包索引本体)+ `devpi-web`(网页界面),只监听容器内部,外部连不到
