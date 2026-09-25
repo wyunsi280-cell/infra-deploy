@@ -8,6 +8,13 @@
 #
 # 装到别的目录:
 #   curl -fsSL .../bootstrap.sh | bash -s -- /custom/path
+#
+# 管道运行时 stdin 不是终端,devpi-ctl.sh 不会弹交互提示,会自动生成密码、
+# 不配外部域名。想指定自己的密码/域名,用环境变量传(exec 会带过去):
+#   export DEVPI_PASSWORD=your-password DEVPI_OUTSIDE_URL=https://devpi.example.com
+#   curl -fsSL .../bootstrap.sh | bash
+# 或者干脆下载下来直接跑(stdin 是真终端,会正常弹交互提示):
+#   curl -fsSL .../bootstrap.sh -o bootstrap.sh && bash bootstrap.sh
 
 set -euo pipefail
 

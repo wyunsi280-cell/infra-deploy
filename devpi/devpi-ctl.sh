@@ -56,15 +56,25 @@ cmd_install() {
   echo " devpi 私有包索引 部署"
   echo "==================================================="
 
-  read -r -p "设置 vendor 账号密码(用于 Basic Auth 网关 + devpi 上传权限,回车自动生成): " DEVPI_PASSWORD
-  if [ -z "${DEVPI_PASSWORD}" ]; then
-    DEVPI_PASSWORD="$(openssl rand -hex 12)"
-    echo "自动生成的密码: ${DEVPI_PASSWORD}(请当场保存,后面查不回来明文)"
+  # 优先级:环境变量传入 > 交互式手动输入(仅当 stdin 是真终端时)> 自动生成/留空。
+  # `curl | bash` 这种管道运行方式下 stdin 已经被脚本内容本身占用,不是终端,
+  # 这时候 `read` 会立刻碰到 EOF 返回失败,配合 `set -e` 会导致脚本静默退出
+  # (跟 harbor-ctl.sh 保持一致的判断方式,一行安装才不会被这里絆倒)。
+  if [ -z "${DEVPI_PASSWORD:-}" ]; then
+    if [ -t 0 ]; then
+      read -r -p "设置 vendor 账号密码(用于 Basic Auth 网关 + devpi 上传权限,回车自动生成): " DEVPI_PASSWORD
+    fi
+    if [ -z "${DEVPI_PASSWORD:-}" ]; then
+      DEVPI_PASSWORD="$(openssl rand -hex 12)"
+      echo "自动生成的密码: ${DEVPI_PASSWORD}(请当场保存,后面查不回来明文)"
+    fi
   fi
 
-  read -r -p "对外访问的域名(比如 https://devpi.example.com,还没配好域名的话直接回车留空,只在内网用): " DEVPI_OUTSIDE_URL
+  if [ -z "${DEVPI_OUTSIDE_URL:-}" ] && [ -t 0 ]; then
+    read -r -p "对外访问的域名(比如 https://devpi.example.com,还没配好域名的话直接回车留空,只在内网用): " DEVPI_OUTSIDE_URL
+  fi
 
-  if [ -n "${DEVPI_OUTSIDE_URL}" ]; then
+  if [ -n "${DEVPI_OUTSIDE_URL:-}" ]; then
     PUBLIC_BASE="${DEVPI_OUTSIDE_URL}"
   else
     PUBLIC_BASE="http://localhost:3141"
@@ -89,9 +99,13 @@ EOF
   # 操作会被带飞到外部域名上去(还没配凭证,直接 401)。所以初始化阶段必须用
   # "干净"的内部地址,建完 root/vendor/prod 这些之后,再补上 outside-url 重启一次
   # ——数据在卷里,重启不会重新初始化,只是让 devpi-server 换个自报地址。
+  #
+  # 注意:docker compose 会直接读父进程环境变量里的 DEVPI_OUTSIDE_URL(不止是
+  # .env 文件),如果调用方是 `export DEVPI_OUTSIDE_URL=... 后 curl|bash` 这种
+  # 用法,这里不显式清空的话,第一次 up 照样会把它带进去,等于没修。
   rm -f .env
   echo "==> 构建并启动容器(先不带外部域名,保证初始化阶段走纯内部地址)"
-  docker compose up -d --build
+  DEVPI_OUTSIDE_URL= docker compose up -d --build
 
   echo "==> 等待 devpi-server 就绪"
   local i
@@ -113,7 +127,7 @@ EOF
   docker compose exec -T devpi devpi login vendor --password "${DEVPI_PASSWORD}" >/dev/null
   docker compose exec -T devpi devpi index -c prod bases=root/pypi >/dev/null 2>&1 || true
 
-  if [ -n "${DEVPI_OUTSIDE_URL}" ]; then
+  if [ -n "${DEVPI_OUTSIDE_URL:-}" ]; then
     echo "==> 补上外部域名配置,重启 devpi-server(数据已在卷里,不会重新初始化)"
     echo "DEVPI_OUTSIDE_URL=${DEVPI_OUTSIDE_URL}" > .env
     docker compose up -d
@@ -138,7 +152,7 @@ EOF
   echo "  [[tool.uv.index]]"
   echo "  name = \"internal\""
   echo "  url = \"${PUBLIC_BASE}/vendor/prod/+simple/\""
-  if [ -z "${DEVPI_OUTSIDE_URL}" ]; then
+  if [ -z "${DEVPI_OUTSIDE_URL:-}" ]; then
     echo ""
     echo "现在只在内网用,以后要接 GitHub Actions 之类的云端 CI,得先给这台机器配一个"
     echo "公网能访问的域名(跟 Harbor 当初配 Cloudflare 隧道一样),然后重新跑一遍本脚本"
