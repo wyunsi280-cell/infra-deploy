@@ -3,6 +3,7 @@ services:
     build: .
     environment:
       - DEVPI_OUTSIDE_URL=${DEVPI_OUTSIDE_URL:-}
+      - DEVPI_PASSWORD=${DEVPI_PASSWORD:-}
     volumes:
       - devpi-data:/data
     restart: unless-stopped

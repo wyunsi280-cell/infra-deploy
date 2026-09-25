@@ -29,6 +29,13 @@ get_vendor_hash() {
   awk '$1 == "vendor" {print $2}' caddy/Caddyfile 2>/dev/null | head -1
 }
 
+# 跟 harbor-ctl.sh 的 get_core_env 一个道理:密码存在容器环境变量里,不用
+# 另外存一份明文文件,要查的时候现读。
+get_vendor_password() {
+  docker inspect devpi-devpi-1 --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null \
+    | grep '^DEVPI_PASSWORD=' | head -1 | cut -d= -f2-
+}
+
 regen_caddyfile() {
   local vendor_hash
   vendor_hash="$(get_vendor_hash)"
@@ -69,6 +76,11 @@ cmd_install() {
       echo "自动生成的密码: ${DEVPI_PASSWORD}(请当场保存,后面查不回来明文)"
     fi
   fi
+  # 存进容器环境变量里(docker-compose.yml 里已声明 DEVPI_PASSWORD),
+  # 跟 harbor-ctl.sh 读 harbor-core 的 HARBOR_ADMIN_PASSWORD 是一个道理——
+  # 以后要查/要用这个密码,不用再问人,`docker inspect devpi-devpi-1` 就能拿到,
+  # 不用另外存一份明文文件。
+  export DEVPI_PASSWORD
 
   if [ -z "${DEVPI_OUTSIDE_URL:-}" ] && [ -t 0 ]; then
     read -r -p "对外访问的域名(比如 https://devpi.example.com,还没配好域名的话直接回车留空,只在内网用): " DEVPI_OUTSIDE_URL
@@ -166,6 +178,17 @@ cmd_status() {
   docker compose ps
 }
 
+cmd_credentials() {
+  local password
+  password="$(get_vendor_password)"
+  if [ -z "${password}" ]; then
+    echo "查不到密码——devpi 容器没在跑,或者是老版本装的(那时候还没把密码存进容器环境变量),重新跑一遍安装即可。" >&2
+    return 1
+  fi
+  echo "账号: vendor"
+  echo "密码: ${password}"
+}
+
 cmd_consumer_add() {
   local name="${1:-}" password="${2:-}"
   if [ -z "${name}" ]; then
@@ -213,18 +236,20 @@ show_menu() {
     echo "================ devpi 管理工具 ================"
     echo "1) 安装部署"
     echo "2) 查看运行状态"
-    echo "3) 添加只读协作者账号"
-    echo "4) 查看所有账号"
-    echo "5) 收回某个协作者账号"
+    echo "3) 查看 vendor 账号密码"
+    echo "4) 添加只读协作者账号"
+    echo "5) 查看所有账号"
+    echo "6) 收回某个协作者账号"
     echo "0) 退出"
     echo "================================================="
     read -r -p "请输入序号: " choice
     case "${choice}" in
       1) cmd_install || echo "❌ 部署失败,请看上面的报错信息。" ;;
       2) cmd_status || echo "❌ 查询失败,请看上面的报错信息。" ;;
-      3) cmd_consumer_add || echo "❌ 添加失败,请看上面的报错信息。" ;;
-      4) cmd_consumer_list || echo "❌ 查询失败,请看上面的报错信息。" ;;
-      5) cmd_consumer_remove || echo "❌ 收回失败,请看上面的报错信息。" ;;
+      3) cmd_credentials || echo "❌ 查询失败,请看上面的报错信息。" ;;
+      4) cmd_consumer_add || echo "❌ 添加失败,请看上面的报错信息。" ;;
+      5) cmd_consumer_list || echo "❌ 查询失败,请看上面的报错信息。" ;;
+      6) cmd_consumer_remove || echo "❌ 收回失败,请看上面的报错信息。" ;;
       0) echo "退出。"; exit 0 ;;
       *) echo "无效选项,请重新输入。" ;;
     esac
@@ -239,9 +264,10 @@ else
   case "$1" in
     install) cmd_install ;;
     status) cmd_status ;;
+    credentials) cmd_credentials ;;
     consumer-add) shift; cmd_consumer_add "$@" ;;
     consumer-list) cmd_consumer_list ;;
     consumer-remove) shift; cmd_consumer_remove "$@" ;;
-    *) echo "用法: $0 [install|status|consumer-add|consumer-list|consumer-remove]" >&2; exit 1 ;;
+    *) echo "用法: $0 [install|status|credentials|consumer-add|consumer-list|consumer-remove]" >&2; exit 1 ;;
   esac
 fi
