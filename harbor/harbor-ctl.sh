@@ -56,12 +56,18 @@ cmd_install() {
   # 没有预先传环境变量、且是交互式运行(走菜单)时,直接问,不用记环境变量语法
   if [ -z "${hostname_value}" ]; then
     if [ -t 0 ]; then
-      read -r -p "对外访问的域名或IP(直接回车用 localhost,仅本机测试用): " hostname_value
+      read -r -p "对外访问的域名或IP(只填域名/IP,不要带 http(s):// 前缀;直接回车用 localhost,仅本机测试用): " hostname_value
       hostname_value="${hostname_value:-localhost}"
     else
       hostname_value="localhost"
     fi
   fi
+  # 容错一下:哪怕手滑带了 http(s):// 前缀或末尾斜杠,也别让它坏了 harbor.yml
+  # 的 hostname 字段和 EXT_ENDPOINT——都是拼接 http://${hostname_value}:${port}
+  # 用的,带了协议头会拼出 http://https://xxx 这种打不开的地址。
+  hostname_value="${hostname_value#http://}"
+  hostname_value="${hostname_value#https://}"
+  hostname_value="${hostname_value%%/*}"
   if [ -z "${http_port}" ]; then
     if [ -t 0 ]; then
       read -r -p "对外访问端口(直接回车用 8090): " http_port
