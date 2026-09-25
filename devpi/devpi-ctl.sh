@@ -65,10 +65,8 @@ cmd_install() {
   read -r -p "对外访问的域名(比如 https://devpi.example.com,还没配好域名的话直接回车留空,只在内网用): " DEVPI_OUTSIDE_URL
 
   if [ -n "${DEVPI_OUTSIDE_URL}" ]; then
-    echo "DEVPI_OUTSIDE_URL=${DEVPI_OUTSIDE_URL}" > .env
     PUBLIC_BASE="${DEVPI_OUTSIDE_URL}"
   else
-    rm -f .env
     PUBLIC_BASE="http://localhost:3141"
   fi
 
@@ -86,7 +84,13 @@ cmd_install() {
 }
 EOF
 
-  echo "==> 构建并启动容器"
+  # 先不带 --outside-url 起一次:一旦设了 outside-url,devpi-server 的 +api
+  # 自报地址就会变成外部域名,容器内部用 localhost 做 devpi use/login 这些初始化
+  # 操作会被带飞到外部域名上去(还没配凭证,直接 401)。所以初始化阶段必须用
+  # "干净"的内部地址,建完 root/vendor/prod 这些之后,再补上 outside-url 重启一次
+  # ——数据在卷里,重启不会重新初始化,只是让 devpi-server 换个自报地址。
+  rm -f .env
+  echo "==> 构建并启动容器(先不带外部域名,保证初始化阶段走纯内部地址)"
   docker compose up -d --build
 
   echo "==> 等待 devpi-server 就绪"
@@ -108,6 +112,12 @@ EOF
   fi
   docker compose exec -T devpi devpi login vendor --password "${DEVPI_PASSWORD}" >/dev/null
   docker compose exec -T devpi devpi index -c prod bases=root/pypi >/dev/null 2>&1 || true
+
+  if [ -n "${DEVPI_OUTSIDE_URL}" ]; then
+    echo "==> 补上外部域名配置,重启 devpi-server(数据已在卷里,不会重新初始化)"
+    echo "DEVPI_OUTSIDE_URL=${DEVPI_OUTSIDE_URL}" > .env
+    docker compose up -d
+  fi
 
   local scheme host
   scheme="${PUBLIC_BASE%%://*}"
