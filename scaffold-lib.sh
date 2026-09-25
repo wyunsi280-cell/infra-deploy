@@ -62,9 +62,14 @@ if ! command -v uv >/dev/null 2>&1; then
   exit 1
 fi
 
+read -r -p "建在哪个目录下面(项目文件夹会建在这个目录里面,目录不存在会自动建;直接回车用当前目录): " BASE_DIR
+BASE_DIR="${BASE_DIR:-.}"
+mkdir -p "${BASE_DIR}"
+cd "${BASE_DIR}"
+
 TARGET_DIR="${LIB_NAME}"
 if [ -e "${TARGET_DIR}" ]; then
-  echo "错误: 当前目录下已经有 ${TARGET_DIR} 了,换个名字或者先处理掉。" >&2
+  echo "错误: $(pwd)/${TARGET_DIR} 已经存在了,换个名字或者先处理掉。" >&2
   exit 1
 fi
 
@@ -284,13 +289,14 @@ git branch -M main
 git remote add origin "https://github.com/${GH_OWNER}/${LIB_NAME}.git"
 git push -u origin main
 
+FULL_PATH="$(pwd)"
 echo ""
 echo "==================================================="
-echo "脚手架完成: ${TARGET_DIR}/"
+echo "脚手架完成: ${FULL_PATH}"
 echo "仓库: https://github.com/${GH_OWNER}/${LIB_NAME}"
 echo ""
 echo "写完代码之后发第一个版本:"
-echo "  cd ${TARGET_DIR}"
+echo "  cd \"${FULL_PATH}\""
 echo "  git add -A && git commit -m \"...\""
 echo "  git tag v0.1.0 && git push origin main && git push origin v0.1.0"
 echo "==================================================="
