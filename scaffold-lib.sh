@@ -272,7 +272,7 @@ echo "==> 首次提交 + 推送"
 git add -A
 git commit -m "Initial scaffold" >/dev/null
 git branch -M main
-git remote add origin "git@github.com:${GH_OWNER}/${LIB_NAME}.git"
+git remote add origin "https://github.com/${GH_OWNER}/${LIB_NAME}.git"
 git push -u origin main
 
 echo ""
