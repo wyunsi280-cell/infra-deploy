@@ -5,8 +5,13 @@
 #
 #   bash -c "$(curl -fsSL https://raw.githubusercontent.com/wyunsi280-cell/infra-deploy/main/scaffold-lib.sh)"
 #
-# 需要:gh(GitHub CLI,已登录)、uv、git、docker(装好 devpi 的那台机器,用来
-# 自动查 devpi 密码——没有的话会问你手动输入)。
+# 需要:gh(GitHub CLI,已登录)、uv、git。
+#
+# docker 不是必须的——只是"如果这台机器刚好能连到装 devpi 的那个容器"时,
+# 用来自动查 vendor 密码的一个小便利(devpi 跟这台机器不在一起,或者压根没装
+# docker,都无所谓,查不到就会问你手动输入,不会卡住)。devpi 迁到独立服务器
+# 长期运行之后,这个自动查询大概率会失效,到时候手动输入密码就行,是同一套
+# 已经测过的交互流程。
 
 set -euo pipefail
 

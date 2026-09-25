@@ -3,11 +3,14 @@
 # 上传到私有 devpi 索引。
 #
 # 用法: ./publish.sh [版本号]  # 不传就自己从 pyproject.toml 读
-# 需要 host 上有 docker 和 devpi-client(`uv tool install devpi-client` 或
-# `pip install devpi-client`)。密码不用记/不用传:自动从正在跑的 devpi
-# 容器(devpi-devpi-1)的环境变量里读,跟 devpi-ctl.sh 的 credentials 命令
-# 是同一个道理。要覆盖默认值就设 DEVPI_URL/DEVPI_INDEX/DEVPI_USER/
-# DEVPI_PASSWORD 环境变量。
+# 需要 host 上有 docker(编译 .so 这一步是硬需求,跑在哪台机器都要有)和
+# devpi-client(`uv tool install devpi-client` 或 `pip install devpi-client`)。
+#
+# 密码优先从本机的 devpi 容器(devpi-devpi-1)自动查,跟 devpi-ctl.sh 的
+# credentials 命令同一个道理——但这只在"编译发布的机器"跟"devpi 本身"是
+# 同一台时才查得到。devpi 迁到独立服务器长期跑之后,这个自动查询会查不到,
+# 到时候手动传 DEVPI_PASSWORD 环境变量就行(报错信息里也会提醒)。
+# 要覆盖默认值就设 DEVPI_URL/DEVPI_INDEX/DEVPI_USER/DEVPI_PASSWORD 环境变量。
 
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
