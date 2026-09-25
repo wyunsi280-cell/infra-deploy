@@ -1,13 +1,36 @@
 #!/usr/bin/env bash
 # devpi 管理脚本——私有 Python 包索引(devpi-server + Caddy 强制 Basic Auth)。
 #
-# 用法:直接运行,跟着菜单提示选择、按要求输入就行,不用记任何命令或参数。
-#   ./devpi-ctl.sh
-
+# 一行远程用(跟 harbor-ctl.sh 一样,不用先 clone 仓库):
+#   bash -c "$(curl -fsSL https://raw.githubusercontent.com/wyunsi280-cell/infra-deploy/main/devpi/devpi-ctl.sh)"
+# 不加任何参数直接弹菜单。也支持命令行子命令模式,见文件末尾。
+#
+# 不管这份脚本本身是从哪里、被怎么运行的(本地 clone、还是每次重新 curl 到
+# /tmp),实际操作都固定发生在 DEVPI_HOME 这个目录——协作者账号列表这些需要
+# 跨次运行记住的状态,不能跟着"脚本文件当前放在哪"到处漂移,不然每次重新
+# curl 一遍就等于换了个全新的空目录,之前加的账号全"找不到"了(其实是登记
+# 的文件没了,不是账号真的丢了)。跟 Harbor 的差别是:Harbor 的账号数据存在
+# Harbor 服务器自己的数据库里,客户端脚本本来就不需要记什么状态;devpi 的
+# 协作者账号是存在 Caddy 的 Basic Auth 文件里,这个文件必须要有一个固定的家。
 set -euo pipefail
-cd "$(dirname "${BASH_SOURCE[0]}")"
 
+DEVPI_HOME="${DEVPI_HOME:-${HOME}/infra/devpi}"
+RAW_BASE="https://raw.githubusercontent.com/wyunsi280-cell/infra-deploy/main/devpi"
 USERS_FILE="caddy/consumers.txt"
+
+# install 需要这几个文件跟自己在同一个目录才能当 docker compose 的 build
+# context 用;不存在就现场拉一份(已存在的不覆盖,免得覆盖掉你自己改过的)。
+fetch_support_files() {
+  mkdir -p "${DEVPI_HOME}"
+  cd "${DEVPI_HOME}"
+  local f
+  for f in Dockerfile entrypoint.sh docker-compose.yml; do
+    if [ ! -f "${f}" ]; then
+      curl -fsSL "${RAW_BASE}/${f}" -o "${f}"
+    fi
+  done
+  chmod +x entrypoint.sh 2>/dev/null || true
+}
 
 require_docker() {
   if ! command -v docker >/dev/null 2>&1; then
@@ -58,6 +81,7 @@ regen_caddyfile() {
 
 cmd_install() {
   require_docker
+  fetch_support_files
 
   echo "==================================================="
   echo " devpi 私有包索引 部署"
@@ -255,6 +279,9 @@ show_menu() {
     esac
   done
 }
+
+mkdir -p "${DEVPI_HOME}"
+cd "${DEVPI_HOME}"
 
 if [ $# -eq 0 ]; then
   require_docker

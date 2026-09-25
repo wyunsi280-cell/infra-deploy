@@ -4,11 +4,15 @@
 
 ## 部署
 
+一行远程用,不用先 clone 仓库(跟 `harbor-ctl.sh` 一样的风格):
+
 ```bash
-./devpi-ctl.sh
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/wyunsi280-cell/infra-deploy/main/devpi/devpi-ctl.sh)"
 ```
 
-不带参数直接运行是交互菜单(装/查状态/发协作者账号/收协作者账号),跟 `harbor-ctl.sh` 一样的风格,不用记参数。
+不带参数直接运行是交互菜单(装/查状态/查密码/发协作者账号/收协作者账号),不用记参数。脚本第一次装的时候会自己把需要的 `Dockerfile`/`entrypoint.sh`/`docker-compose.yml` 拉到一个固定目录(`DEVPI_HOME`,默认 `~/infra/devpi`),不管你这份脚本是从哪运行的,以后每次用同一条命令都会操作同一个固定目录,账号状态不会丢。
+
+也可以本地 clone 后跑 `./devpi-ctl.sh`,效果一样。
 
 ## 账号模型
 
