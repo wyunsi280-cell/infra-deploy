@@ -4,9 +4,27 @@
 
 脚本本身不含任何密码/token(密码都是部署时随机生成或交互输入),所以这个仓库是 public 的,方便一行命令远程部署。
 
+## 一行入口
+
+不用分别记 Harbor 和 devpi 两个地址,一个统一菜单选:
+
+```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/wyunsi280-cell/infra-deploy/main/infra-ctl.sh)"
+```
+
+```
+================ 基础设施管理 ================
+1) Harbor(Docker 镜像仓库)
+2) devpi(私有 Python 包索引)
+0) 退出
+===============================================
+```
+
+选了之后会委托给下面各自的脚本(内容完全没变,直接单独用也一样行),这里只是省得记两个地址。
+
 ## 包含什么
 
-| 目录 | 是什么 | 一行安装 |
+| 目录 | 是什么 | 单独的一行安装 |
 |---|---|---|
 | [`harbor/`](./harbor) | Docker 镜像仓库(Harbor),给客户发独立拉取权限用 | `bash -c "$(curl -fsSL https://raw.githubusercontent.com/wyunsi280-cell/infra-deploy/main/harbor/harbor-ctl.sh)" bash install` |
 | [`devpi/`](./devpi) | 私有 Python 包索引,内部库(比如 `fastapi-admin-core`)编译成 `.so` 后发布到这里,正常 `pip install` | `bash -c "$(curl -fsSL https://raw.githubusercontent.com/wyunsi280-cell/infra-deploy/main/devpi/devpi-ctl.sh)"` |
