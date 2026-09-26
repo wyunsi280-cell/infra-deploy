@@ -262,6 +262,35 @@ cmd_create_index() {
   echo "跟 vendor/prod 是同一个 vendor 账号密码,只是索引名不一样——发布/消费的时候把 URL 里的 prod 换成 ${index_name} 就行。"
 }
 
+cmd_uninstall() {
+  echo "警告:此操作会永久删除这套 devpi(${DEVPI_HOME})的所有容器、数据卷——"
+  echo "已发布的包、vendor 密码、协作者账号、所有索引全部丢失,不可恢复!"
+  echo ""
+  read -r -p "确认继续吗?输入大写 DELETE 继续,其他任意输入取消: " confirm1
+  if [ "${confirm1}" != "DELETE" ]; then
+    echo "已取消,没有做任何改动。"
+    return
+  fi
+
+  echo ""
+  echo "最后确认:这会清空 ${DEVPI_HOME} 里的全部数据,无法恢复。"
+  read -r -p "真的要卸载吗?输入 yes 继续: " confirm2
+  if [ "${confirm2}" != "yes" ]; then
+    echo "已取消,没有做任何改动。"
+    return
+  fi
+
+  echo "==> 停止并删除容器、数据卷、网络"
+  docker compose down -v 2>/dev/null || true
+
+  echo "==> 删除安装目录 ${DEVPI_HOME}"
+  local target="${DEVPI_HOME}"
+  cd /
+  rm -rf "${target}"
+
+  echo "卸载完成。"
+}
+
 cmd_consumer_add() {
   local name="${1:-}" password="${2:-}"
   if [ -z "${name}" ]; then
@@ -314,6 +343,7 @@ show_menu() {
     echo "5) 查看所有账号"
     echo "6) 收回某个协作者账号"
     echo "7) 创建额外索引(比如测试用的 test,不用重新装一套)"
+    echo "8) 卸载(危险操作,不可恢复,会多次确认)"
     echo "0) 退出"
     echo "================================================="
     read -r -p "请输入序号: " choice
@@ -325,6 +355,7 @@ show_menu() {
       5) cmd_consumer_list || echo "❌ 查询失败,请看上面的报错信息。" ;;
       6) cmd_consumer_remove || echo "❌ 收回失败,请看上面的报错信息。" ;;
       7) cmd_create_index || echo "❌ 创建失败,请看上面的报错信息。" ;;
+      8) cmd_uninstall || echo "❌ 卸载失败,请看上面的报错信息。" ;;
       0) echo "退出。"; exit 0 ;;
       *) echo "无效选项,请重新输入。" ;;
     esac
@@ -347,6 +378,7 @@ else
     consumer-list) cmd_consumer_list ;;
     consumer-remove) shift; cmd_consumer_remove "$@" ;;
     create-index) shift; cmd_create_index "$@" ;;
-    *) echo "用法: $0 [install|status|credentials|consumer-add|consumer-list|consumer-remove|create-index]" >&2; exit 1 ;;
+    uninstall) cmd_uninstall ;;
+    *) echo "用法: $0 [install|status|credentials|consumer-add|consumer-list|consumer-remove|create-index|uninstall]" >&2; exit 1 ;;
   esac
 fi
