@@ -248,7 +248,10 @@ cmd_create_index() {
     return 1
   fi
 
-  docker compose exec -T devpi devpi use http://localhost:3141 >/dev/null
+  # 账号密码直接嵌进 devpi use 的 URL——这台 devpi 已经配了 --outside-url,
+  # 裸的 `devpi use http://localhost:3141` 会被 +api 探测带到外部域名上,
+  # 内部命令没带凭证就会 401(cmd_install 那边也踩过同一个坑,是同一个原因)。
+  docker compose exec -T devpi devpi use "http://vendor:${password}@localhost:3141" >/dev/null
   docker compose exec -T devpi devpi login vendor --password "${password}" >/dev/null
   if docker compose exec -T devpi devpi index vendor/"${index_name}" >/dev/null 2>&1; then
     echo "vendor/${index_name} 已经存在了,不用重建。"
