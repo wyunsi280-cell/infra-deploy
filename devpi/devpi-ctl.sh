@@ -234,6 +234,31 @@ cmd_credentials() {
   echo "密码: ${password}"
 }
 
+cmd_create_index() {
+  local index_name="${1:-}"
+  if [ -z "${index_name}" ]; then
+    read -r -p "新建索引名(比如 test,不确定要不要就直接想想名字,不要跟 prod 重了): " index_name
+  fi
+  [ -z "${index_name}" ] && { echo "取消。"; return; }
+
+  local password
+  password="$(get_vendor_password)"
+  if [ -z "${password}" ]; then
+    echo "查不到 vendor 密码——devpi 容器没在跑?" >&2
+    return 1
+  fi
+
+  docker compose exec -T devpi devpi use http://localhost:3141 >/dev/null
+  docker compose exec -T devpi devpi login vendor --password "${password}" >/dev/null
+  if docker compose exec -T devpi devpi index vendor/"${index_name}" >/dev/null 2>&1; then
+    echo "vendor/${index_name} 已经存在了,不用重建。"
+    return
+  fi
+  docker compose exec -T devpi devpi index -c "${index_name}" bases=root/pypi >/dev/null
+  echo "已创建索引: vendor/${index_name}"
+  echo "跟 vendor/prod 是同一个 vendor 账号密码,只是索引名不一样——发布/消费的时候把 URL 里的 prod 换成 ${index_name} 就行。"
+}
+
 cmd_consumer_add() {
   local name="${1:-}" password="${2:-}"
   if [ -z "${name}" ]; then
@@ -285,6 +310,7 @@ show_menu() {
     echo "4) 添加只读协作者账号"
     echo "5) 查看所有账号"
     echo "6) 收回某个协作者账号"
+    echo "7) 创建额外索引(比如测试用的 test,不用重新装一套)"
     echo "0) 退出"
     echo "================================================="
     read -r -p "请输入序号: " choice
@@ -295,6 +321,7 @@ show_menu() {
       4) cmd_consumer_add || echo "❌ 添加失败,请看上面的报错信息。" ;;
       5) cmd_consumer_list || echo "❌ 查询失败,请看上面的报错信息。" ;;
       6) cmd_consumer_remove || echo "❌ 收回失败,请看上面的报错信息。" ;;
+      7) cmd_create_index || echo "❌ 创建失败,请看上面的报错信息。" ;;
       0) echo "退出。"; exit 0 ;;
       *) echo "无效选项,请重新输入。" ;;
     esac
@@ -316,6 +343,7 @@ else
     consumer-add) shift; cmd_consumer_add "$@" ;;
     consumer-list) cmd_consumer_list ;;
     consumer-remove) shift; cmd_consumer_remove "$@" ;;
-    *) echo "用法: $0 [install|status|credentials|consumer-add|consumer-list|consumer-remove]" >&2; exit 1 ;;
+    create-index) shift; cmd_create_index "$@" ;;
+    *) echo "用法: $0 [install|status|credentials|consumer-add|consumer-list|consumer-remove|create-index]" >&2; exit 1 ;;
   esac
 fi
