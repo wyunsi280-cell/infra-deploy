@@ -283,6 +283,14 @@ jobs:
           bash publish.sh "${VERSION}"
 EOF
 
+echo "==> 写测试发布工作流(手动触发,发到 vendor/test,不用打 tag)"
+curl -fsSL "https://raw.githubusercontent.com/wyunsi280-cell/infra-deploy/main/workflow-templates/test-publish-template.yml" \
+  -o .github/workflows/test-publish.yml
+
+echo "==> 写 project-ctl.ps1(git 快捷操作 + 触发测试/正式发布 + 同步 devpi 密码,菜单式,不用记命令)"
+curl -fsSL "https://raw.githubusercontent.com/wyunsi280-cell/infra-deploy/main/project-ctl-template.ps1" \
+  -o project-ctl.ps1
+
 echo "==> 配 GitHub secrets"
 gh secret set DEVPI_URL --repo "${GH_OWNER}/${LIB_NAME}" --body "${DEVPI_URL_INPUT}"
 gh secret set DEVPI_PASSWORD --repo "${GH_OWNER}/${LIB_NAME}" --body "${DEVPI_PASSWORD}"
@@ -300,8 +308,9 @@ echo "==================================================="
 echo "脚手架完成: ${FULL_PATH}"
 echo "仓库: https://github.com/${GH_OWNER}/${LIB_NAME}"
 echo ""
-echo "写完代码之后发第一个版本:"
+echo "写完代码之后,日常操作(提交推送、测试发布、正式发布、同步密码)不用记命令,"
+echo "在这个目录下(PowerShell 里)跑:"
 echo "  cd \"${FULL_PATH}\""
-echo "  git add -A && git commit -m \"...\""
-echo "  git tag v0.1.0 && git push origin main && git push origin v0.1.0"
+echo "  .\\project-ctl.ps1"
+echo "弹菜单选就行。"
 echo "==================================================="

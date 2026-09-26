@@ -1,0 +1,45 @@
+name: Test publish to devpi
+
+# 手动触发,不用打 tag——发到 vendor/test 索引验证一下打包/编译没问题,
+# 不影响 vendor/prod(admin-platform 这些实际吃的是 prod)。
+# 触发方式: GitHub 网页 Actions 页面点 "Run workflow",或者命令行:
+#   gh workflow run test-publish.yml --repo wyunsi280-cell/fastapi_admin_core
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Security lint (bandit)
+        run: uv run bandit -r src -q
+
+      - name: Dependency vulnerability scan (pip-audit)
+        run: uv run pip-audit
+
+      - name: Run tests
+        run: uv run pytest -v
+
+  publish:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install devpi-client
+        run: pip install --quiet devpi-client
+
+      - name: Compile core to .so, build wheel, publish to devpi test index
+        env:
+          DEVPI_URL: ${{ secrets.DEVPI_URL }}
+          DEVPI_PASSWORD: ${{ secrets.DEVPI_PASSWORD }}
+          DEVPI_INDEX: vendor/test
+        run: bash publish.sh
