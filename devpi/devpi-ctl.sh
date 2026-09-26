@@ -18,6 +18,15 @@ DEVPI_HOME="${DEVPI_HOME:-${HOME}/infra/devpi}"
 RAW_BASE="https://raw.githubusercontent.com/wyunsi280-cell/infra-deploy/main/devpi"
 USERS_FILE="caddy/consumers.txt"
 
+# 想在同一台机器上并排跑第二套(比如测试环境),这两个变量分开传:
+#   DEVPI_HOME=~/infra/devpi-test COMPOSE_PROJECT_NAME=devpi-test DEVPI_HOST_PORT=3142 \
+#     bash -c "$(curl -fsSL .../devpi-ctl.sh)"
+# COMPOSE_PROJECT_NAME 决定容器叫什么名字(devpi-devpi-1 还是 devpi-test-devpi-1),
+# 不显式设的话两套装在不同目录也可能因为 docker compose 自动推导出一样的
+# 项目名而互相打架,所以固定下来,不依赖自动推导。
+COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-devpi}"
+export COMPOSE_PROJECT_NAME
+
 # install 需要这几个文件跟自己在同一个目录才能当 docker compose 的 build
 # context 用;不存在就现场拉一份(已存在的不覆盖,免得覆盖掉你自己改过的)。
 fetch_support_files() {
@@ -55,7 +64,7 @@ get_vendor_hash() {
 # 跟 harbor-ctl.sh 的 get_core_env 一个道理:密码存在容器环境变量里,不用
 # 另外存一份明文文件,要查的时候现读。
 get_vendor_password() {
-  docker inspect devpi-devpi-1 --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null \
+  docker inspect "${COMPOSE_PROJECT_NAME}-devpi-1" --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null \
     | grep '^DEVPI_PASSWORD=' | head -1 | cut -d= -f2-
 }
 
@@ -110,10 +119,16 @@ cmd_install() {
     read -r -p "对外访问的域名(比如 https://devpi.example.com,还没配好域名的话直接回车留空,只在内网用): " DEVPI_OUTSIDE_URL
   fi
 
+  if [ -z "${DEVPI_HOST_PORT:-}" ] && [ -t 0 ]; then
+    read -r -p "对外暴露的端口(同一台机器上要跑第二套(比如测试环境)才需要改,直接回车用 3141): " DEVPI_HOST_PORT
+  fi
+  DEVPI_HOST_PORT="${DEVPI_HOST_PORT:-3141}"
+  export DEVPI_HOST_PORT
+
   if [ -n "${DEVPI_OUTSIDE_URL:-}" ]; then
     PUBLIC_BASE="${DEVPI_OUTSIDE_URL}"
   else
-    PUBLIC_BASE="http://localhost:3141"
+    PUBLIC_BASE="http://localhost:${DEVPI_HOST_PORT}"
   fi
 
   echo "==> 生成 Caddy Basic Auth 密码哈希"
@@ -139,7 +154,10 @@ EOF
   # 注意:docker compose 会直接读父进程环境变量里的 DEVPI_OUTSIDE_URL(不止是
   # .env 文件),如果调用方是 `export DEVPI_OUTSIDE_URL=... 后 curl|bash` 这种
   # 用法,这里不显式清空的话,第一次 up 照样会把它带进去,等于没修。
-  rm -f .env
+  # DEVPI_HOST_PORT 一直写进 .env(不像 DEVPI_OUTSIDE_URL 那样要分两阶段),
+  # 不然以后重跑 install(比如只是想补个域名)又没重新传 DEVPI_HOST_PORT 的话,
+  # 会悄悄变回默认的 3141,跟同一台机器上跑的另一套(比如生产那套)抢端口。
+  echo "DEVPI_HOST_PORT=${DEVPI_HOST_PORT}" > .env
   echo "==> 构建并启动容器(先不带外部域名,保证初始化阶段走纯内部地址)"
   DEVPI_OUTSIDE_URL= docker compose up -d --build
 
@@ -165,7 +183,10 @@ EOF
 
   if [ -n "${DEVPI_OUTSIDE_URL:-}" ]; then
     echo "==> 补上外部域名配置,重启 devpi-server(数据已在卷里,不会重新初始化)"
-    echo "DEVPI_OUTSIDE_URL=${DEVPI_OUTSIDE_URL}" > .env
+    {
+      echo "DEVPI_HOST_PORT=${DEVPI_HOST_PORT}"
+      echo "DEVPI_OUTSIDE_URL=${DEVPI_OUTSIDE_URL}"
+    } > .env
     docker compose up -d
   fi
 

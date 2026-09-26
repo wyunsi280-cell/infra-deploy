@@ -13,7 +13,7 @@ services:
   caddy:
     image: caddy:2-alpine
     ports:
-      - "3141:3141"
+      - "${DEVPI_HOST_PORT:-3141}:3141"
     volumes:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
