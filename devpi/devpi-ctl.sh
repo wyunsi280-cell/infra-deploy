@@ -118,6 +118,15 @@ cmd_install() {
   if [ -z "${DEVPI_OUTSIDE_URL:-}" ] && [ -t 0 ]; then
     read -r -p "对外访问的域名(比如 https://devpi.example.com,还没配好域名的话直接回车留空,只在内网用): " DEVPI_OUTSIDE_URL
   fi
+  # 真实踩过的坑:这里跟 harbor-ctl.sh 的域名输入不一样——那边明确说"别带协议头",
+  # 这边是要求带协议头的完整 URL。手滑漏填 https:// 的话,devpi-server 会把
+  # DEVPI_OUTSIDE_URL 原样当成自己的对外地址,后续所有自动生成的链接/API 探测
+  # 都会缺协议头(比如变成 "://devpi.example.com"),表现成一堆看似不相关的
+  # 401/连接失败,很难联想到是这里漏填的。这里做个容错,没带协议头就默认补 https://。
+  if [ -n "${DEVPI_OUTSIDE_URL:-}" ] && [[ "${DEVPI_OUTSIDE_URL}" != http://* ]] && [[ "${DEVPI_OUTSIDE_URL}" != https://* ]]; then
+    echo "==> 没检测到 http(s):// 前缀,自动按 https:// 补上: https://${DEVPI_OUTSIDE_URL}"
+    DEVPI_OUTSIDE_URL="https://${DEVPI_OUTSIDE_URL}"
+  fi
 
   if [ -z "${DEVPI_HOST_PORT:-}" ] && [ -t 0 ]; then
     read -r -p "对外暴露的端口(同一台机器上要跑第二套(比如测试环境)才需要改,直接回车用 3141): " DEVPI_HOST_PORT
