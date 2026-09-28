@@ -30,20 +30,6 @@ function Get-RepoSlug {
     return $null
 }
 
-function Get-VendorPasswordFromDevpi {
-    # 本机(WSL,如果有的话)能不能连到跑 devpi 的那个容器,连得到就直接读,
-    # 连不到返回空,不报错——调用方自己决定要不要问人工输入。这是唯一还会
-    # 碰 WSL 的地方,而且是纯粹的"有就顺手用,没有就问人"的小便利,不是硬依赖
-    # (跟发布用的 docker 编译不一样,那个是真的需要 docker,已经改成完全走
-    # GitHub Actions 远程编译,不再依赖本机 WSL)。
-    try {
-        $pw = wsl bash -lc "docker inspect devpi-devpi-1 --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | grep '^DEVPI_PASSWORD=' | head -1 | cut -d= -f2-" 2>$null
-        return $pw.Trim()
-    } catch {
-        return $null
-    }
-}
-
 function Invoke-CommitPush {
     param([string]$CommitMessage)
 
@@ -158,21 +144,13 @@ function Invoke-SyncDevpiSecret {
         return
     }
 
-    Write-Host "==> 尝试从本机 devpi 容器自动读取当前密码"
-    $password = Get-VendorPasswordFromDevpi
-    if ($password) {
-        Write-Host "读到了(不显示明文),要用这个同步到 $slug 的 DEVPI_PASSWORD secret 吗?"
-        $confirm = Read-Host "确认吗?(y/N)"
-        if ($confirm -ne "y" -and $confirm -ne "Y") {
-            $password = $null
-        }
-    }
-    if (-not $password) {
-        $secure = Read-Host "手动输入 devpi vendor 密码" -AsSecureString
-        $password = [Runtime.InteropServices.Marshal]::PtrToStringAuto(
-            [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
-        )
-    }
+    # devpi 跑在独立的远程服务器上,这台机器(写代码/跑这个脚本的机器)没有
+    # 任何办法直接连到那台服务器的 docker 去读密码,只能手动输入——密码从
+    # devpi-ctl.sh 的 "3) 查看 vendor 账号密码" 菜单里查。
+    $secure = Read-Host "输入 devpi vendor 密码(去部署 devpi 的那台服务器上,用 devpi-ctl.sh 菜单 3 查)" -AsSecureString
+    $password = [Runtime.InteropServices.Marshal]::PtrToStringAuto(
+        [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
+    )
     if (-not $password) {
         Write-Host "没有密码,取消。"
         return
