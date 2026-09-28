@@ -132,6 +132,10 @@ cmd_install() {
   # "https://devpi.example.com//vendor/prod" 这种双斜杠地址,自己生成的
   # +api/静态资源链接全部带着这个双斜杠,内部路由匹配不上,表现成 index
   # 建好了却查不到、看起来毫不相关的 404。这里顺手把结尾的 "/" 都去掉。
+  # (这个修复自己也踩了一次坑:非交互场景下 DEVPI_OUTSIDE_URL 可能完全没被
+  # 赋值过,不是"空字符串"而是"没这个变量",在 set -u 下直接 unbound
+  # variable 报错退出——加上 :- 默认空值兜底。)
+  DEVPI_OUTSIDE_URL="${DEVPI_OUTSIDE_URL:-}"
   DEVPI_OUTSIDE_URL="${DEVPI_OUTSIDE_URL%/}"
 
   if [ -z "${DEVPI_HOST_PORT:-}" ] && [ -t 0 ]; then
@@ -195,6 +199,12 @@ EOF
   fi
   docker compose exec -T devpi devpi login vendor --password "${DEVPI_PASSWORD}" >/dev/null
   docker compose exec -T devpi devpi index -c prod bases=root/pypi >/dev/null 2>&1 || true
+  # test 索引顺手建好——跟 prod 不一样,dev 之类没在任何脚本/工作流里被真的
+  # 用到,不预先建,等真需要再用 create-index(反正很快);但 test 已经写死
+  # 在 test-publish.yml/publish.sh 的默认值里,每个项目迟早都要用,装的时候
+  # 顺手建了能省一次"重装完忘记建 test,发布测试版本直接 401"这种坑
+  # (是这次真踩过的)。
+  docker compose exec -T devpi devpi index -c test bases=root/pypi >/dev/null 2>&1 || true
 
   if [ -n "${DEVPI_OUTSIDE_URL:-}" ]; then
     echo "==> 补上外部域名配置,重启 devpi-server(数据已在卷里,不会重新初始化)"
@@ -215,6 +225,7 @@ EOF
   echo "地址: ${PUBLIC_BASE}/vendor/prod/"
   echo "账号: vendor"
   echo "密码: ${DEVPI_PASSWORD}"
+  echo "顺手建好了 vendor/test(测试发布默认用这个),还想要别的索引用菜单 7。"
   echo ""
   echo "上传(在项目目录下,先 uv build 出 wheel):"
   echo "  devpi use ${scheme}://vendor:${DEVPI_PASSWORD}@${host}/vendor/prod"
