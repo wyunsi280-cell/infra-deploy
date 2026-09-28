@@ -127,6 +127,12 @@ cmd_install() {
     echo "==> 没检测到 http(s):// 前缀,自动按 https:// 补上: https://${DEVPI_OUTSIDE_URL}"
     DEVPI_OUTSIDE_URL="https://${DEVPI_OUTSIDE_URL}"
   fi
+  # 真实踩过的坑(2026-09-28):结尾多打了个 "/"(比如
+  # "https://devpi.example.com/")也会出问题——devpi-server 会原样拼接出
+  # "https://devpi.example.com//vendor/prod" 这种双斜杠地址,自己生成的
+  # +api/静态资源链接全部带着这个双斜杠,内部路由匹配不上,表现成 index
+  # 建好了却查不到、看起来毫不相关的 404。这里顺手把结尾的 "/" 都去掉。
+  DEVPI_OUTSIDE_URL="${DEVPI_OUTSIDE_URL%/}"
 
   if [ -z "${DEVPI_HOST_PORT:-}" ] && [ -t 0 ]; then
     read -r -p "对外暴露的端口(同一台机器上要跑第二套(比如测试环境)才需要改,直接回车用 3141): " DEVPI_HOST_PORT
