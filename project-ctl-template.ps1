@@ -91,8 +91,10 @@ function Invoke-TestPublish {
         Write-Host "这个仓库没有 .github/workflows/test-publish.yml,跳过。"
         return
     }
-    Write-Host "==> 触发 GitHub Actions 测试发布(发到 vendor/test)"
-    gh workflow run test-publish.yml --repo $slug
+    $index = Read-Host "发到 vendor 下的哪个索引(直接回车用默认的 test,索引得先用 devpi-ctl.sh 建好)"
+    if (-not $index) { $index = "test" }
+    Write-Host "==> 触发 GitHub Actions 测试发布(发到 vendor/$index)"
+    gh workflow run test-publish.yml --repo $slug -f "index=$index"
     if ($LASTEXITCODE -ne 0) { return }
     Write-Host "已触发,去这里看进度:"
     Write-Host "  https://github.com/$slug/actions/workflows/test-publish.yml"
@@ -173,7 +175,7 @@ function Show-Menu {
         Write-Host "4) 拉取远程最新"
         Write-Host "5) 查看提交历史(最近20条)"
         Write-Host "--- 发布(都走 GitHub Actions 远程编译,不依赖本机 docker/WSL) ---"
-        Write-Host "6) 触发测试发布(发到 vendor/test,不用改版本号/打 tag)"
+        Write-Host "6) 触发测试发布(可以指定发到哪个索引,默认 vendor/test,不用改版本号/打 tag)"
         Write-Host "7) 打 tag 触发正式发布(发到 vendor/prod,先改好 pyproject.toml 版本号)"
         Write-Host "8) 同步 devpi 密码到 GitHub secret(devpi 密码换了就用这个)"
         Write-Host "0) 退出"

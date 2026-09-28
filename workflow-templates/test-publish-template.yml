@@ -1,11 +1,17 @@
 name: Test publish to devpi
 
-# 手动触发,不用打 tag——发到 vendor/test 索引验证一下打包/编译没问题,
-# 不影响 vendor/prod(admin-platform 这些实际吃的是 prod)。
+# 手动触发,不用打 tag——发到 vendor/<index> 索引验证一下打包/编译没问题,
+# 不影响 vendor/prod(下游项目实际吃的是 prod)。索引名可以在触发时指定
+# (不确定要不要用别的名字,直接回车/不填用默认的 test 就行)。
 # 触发方式: GitHub 网页 Actions 页面点 "Run workflow",或者命令行:
-#   gh workflow run test-publish.yml --repo wyunsi280-cell/fastapi_admin_core
+#   gh workflow run test-publish.yml --repo OWNER/REPO -f index=test1
 on:
   workflow_dispatch:
+    inputs:
+      index:
+        description: "发到 vendor 下的哪个索引(不用带 vendor/ 前缀,索引得先用 devpi-ctl.sh 建好)"
+        required: false
+        default: "test"
 
 jobs:
   test:
@@ -41,5 +47,5 @@ jobs:
         env:
           DEVPI_URL: ${{ secrets.DEVPI_URL }}
           DEVPI_PASSWORD: ${{ secrets.DEVPI_PASSWORD }}
-          DEVPI_INDEX: vendor/test
+          DEVPI_INDEX: vendor/${{ github.event.inputs.index || 'test' }}
         run: bash publish.sh
