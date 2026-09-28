@@ -1,14 +1,13 @@
 #!/usr/bin/env bash
-# 基础设施管理统一入口——Harbor、devpi、license-system 的 key 管理都在这
-# 一个脚本里选,不用分别记好几个 curl 地址。选了之后委托给各自现有、已经
-# 单独测过的 harbor-ctl.sh/devpi-ctl.sh/license-ctl.sh,这几个脚本本身没有
-# 任何改动,直接一行远程也照样能单独用。
+# 基础设施管理统一入口——Harbor、devpi、license-system(key管理+部署)都在
+# 这一个脚本里选,不用分别记好几个 curl 地址。选了之后委托给各自现有、已经
+# 单独测过的 harbor-ctl.sh/devpi-ctl.sh/license-ctl.sh/license-deploy.sh,
+# 这几个脚本本身没有任何改动,直接一行远程也照样能单独用。
 #
-# license 那一项管的是"给已部署好的 license-system 签发/查询/吊销/恢复
-# key"——不是部署 license-system 本身。license-system 的镜像是从私有仓库
-# 现场编译的,不是像 Harbor/devpi 那样拉官方现成镜像,装/重装服务本身做不到
-# 公开一行部署,得去 license-system 私有仓库里手动 `docker compose up -d
-# --build`。
+# license-system 的镜像是私有仓库里的源码经 CI 编译推到 Harbor 的(不是像
+# Harbor/devpi 那样拉官方现成镜像),但部署这个动作本身(拉镜像、起容器)不
+# 涉及源码,所以 license-deploy.sh 依然可以放公开仓库、一行远程调用,不需要
+# clone 私有的 license-system 仓库。
 #
 #   bash -c "$(curl -fsSL https://raw.githubusercontent.com/wyunsi280-cell/infra-deploy/main/infra-ctl.sh)"
 
@@ -22,7 +21,8 @@ show_menu() {
     echo "================ 基础设施管理 ================"
     echo "1) Harbor(Docker 镜像仓库)"
     echo "2) devpi(私有 Python 包索引)"
-    echo "3) license(签发/查询/吊销/恢复 key,不含部署)"
+    echo "3) license 的 key 管理(签发/查询/吊销/恢复)"
+    echo "4) license-system 部署/更新(拉Harbor镜像跑起来)"
     echo "0) 退出"
     echo "==============================================="
     read -r -p "请输入序号: " choice
@@ -30,6 +30,7 @@ show_menu() {
       1) bash -c "$(curl -fsSL "${RAW_BASE}/harbor/harbor-ctl.sh")" ;;
       2) bash -c "$(curl -fsSL "${RAW_BASE}/devpi/devpi-ctl.sh")" ;;
       3) bash -c "$(curl -fsSL "${RAW_BASE}/license/license-ctl.sh")" ;;
+      4) bash -c "$(curl -fsSL "${RAW_BASE}/license/license-deploy.sh")" ;;
       0) echo "退出。"; exit 0 ;;
       *) echo "无效选项,请重新输入。" ;;
     esac
