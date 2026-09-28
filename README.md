@@ -6,7 +6,7 @@
 
 ## 一行入口
 
-不用分别记 Harbor 和 devpi 两个地址,一个统一菜单选:
+不用分别记好几个地址,一个统一菜单选:
 
 ```bash
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/wyunsi280-cell/infra-deploy/main/infra-ctl.sh)"
@@ -16,11 +16,14 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/wyunsi280-cell/infra-dep
 ================ 基础设施管理 ================
 1) Harbor(Docker 镜像仓库)
 2) devpi(私有 Python 包索引)
+3) license(签发/查询/吊销/恢复 key,不含部署)
 0) 退出
 ===============================================
 ```
 
-选了之后会委托给下面各自的脚本(内容完全没变,直接单独用也一样行),这里只是省得记两个地址。
+选了之后会委托给下面各自的脚本(内容完全没变,直接单独用也一样行),这里只是省得记好几个地址。
+
+`3) license` 跟前两个不太一样——管的是"给已经部署好的 license-system **签发/查询/吊销/恢复 key**",不是部署 license-system 本身。license-system 的镜像是从私有仓库现场编译的,不像 Harbor/devpi 拉官方现成镜像,装/重装服务本身做不到公开一行部署,得去 `license-system` 私有仓库里手动 `docker compose up -d --build`。`license-ctl.sh` 本身不含密码/源码,纯粹是发 HTTP 请求的薄壳,所以这部分能放公开仓库。
 
 ## 包含什么
 
@@ -28,6 +31,7 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/wyunsi280-cell/infra-dep
 |---|---|---|
 | [`harbor/`](./harbor) | Docker 镜像仓库(Harbor),给客户发独立拉取权限用 | `bash -c "$(curl -fsSL https://raw.githubusercontent.com/wyunsi280-cell/infra-deploy/main/harbor/harbor-ctl.sh)" bash install` |
 | [`devpi/`](./devpi) | 私有 Python 包索引,内部库(比如 `fastapi-admin-core`)编译成 `.so` 后发布到这里,正常 `pip install` | `bash -c "$(curl -fsSL https://raw.githubusercontent.com/wyunsi280-cell/infra-deploy/main/devpi/devpi-ctl.sh)"` |
+| [`license/`](./license) | license-system(授权系统)的 key 管理薄壳,服务部署本身在私有的 `license-system` 仓库里 | `LICENSE_SERVER_URL=https://xxx bash -c "$(curl -fsSL https://raw.githubusercontent.com/wyunsi280-cell/infra-deploy/main/license/license-ctl.sh)"` |
 
 注意统一用的是 `bash -c "$(curl ...)"`,不是 `curl ... | bash`——两者看着差不多,交互体验完全不同:管道方式下 bash 是从 stdin 读脚本内容本身,stdin 被脚本源占用了,脚本里想 `read` 你的键盘输入时只能读到 EOF(表现为一路用默认值/自动生成密码,不会真的停下来问你);`bash -c "$(curl ...)"` 是把脚本内容当命令行参数传进去,stdin 没被占用,还连着你的终端,脚本里的 `read` 能正常弹出来问——这才是真正"一行搞定,过程中交互式填"的写法。
 
