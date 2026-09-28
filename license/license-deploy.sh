@@ -98,6 +98,38 @@ cmd_logs() {
   docker compose -f docker-compose.deploy.yml logs --tail 50 -f
 }
 
+cmd_uninstall() {
+  echo "警告:此操作会永久删除这套 license-system(${LICENSE_HOME})的容器、数据卷——"
+  echo "已签发的所有 key、私钥、ADMIN_TOKEN 全部丢失,不可恢复!"
+  echo "私钥丢失还有连带影响:重装后会生成新私钥,fastapi_admin_core 里编译进去的"
+  echo "公钥常量要跟着更新,不然客户端本地验签会全部失败(这个坑已经真实踩过)。"
+  echo ""
+  read -r -p "确认继续吗?输入大写 DELETE 继续,其他任意输入取消: " confirm1
+  if [ "${confirm1}" != "DELETE" ]; then
+    echo "已取消,没有做任何改动。"
+    return
+  fi
+
+  echo ""
+  echo "最后确认:这会清空 ${LICENSE_HOME} 里的全部数据,无法恢复。"
+  read -r -p "真的要卸载吗?输入 yes 继续: " confirm2
+  if [ "${confirm2}" != "yes" ]; then
+    echo "已取消,没有做任何改动。"
+    return
+  fi
+
+  [ -f docker-compose.deploy.yml ] || write_compose_file
+  echo "==> 停止并删除容器、数据卷"
+  docker compose -f docker-compose.deploy.yml down -v 2>/dev/null || true
+
+  echo "==> 删除操作目录 ${LICENSE_HOME}"
+  local target="${LICENSE_HOME}"
+  cd /
+  rm -rf "${target}"
+
+  echo "已卸载。要重新部署,直接再跑一遍这份脚本、选 1 就行(会当成第一次部署,生成新的 ADMIN_TOKEN 和新的签名密钥)。"
+}
+
 show_menu() {
   set +e
   while true; do
@@ -106,6 +138,7 @@ show_menu() {
     echo "1) 部署/更新(拉最新镜像并重启)"
     echo "2) 查看运行状态"
     echo "3) 查看日志(Ctrl+C 退出)"
+    echo "4) 卸载(危险操作,不可恢复,会多次确认)"
     echo "0) 退出"
     echo "======================================================================"
     read -r -p "请输入序号: " choice
@@ -113,6 +146,7 @@ show_menu() {
       1) cmd_deploy || echo "❌ 部署失败,请看上面的报错信息。" ;;
       2) cmd_status || echo "❌ 查询失败,请看上面的报错信息。" ;;
       3) cmd_logs ;;
+      4) cmd_uninstall || echo "❌ 卸载失败,请看上面的报错信息。" ;;
       0) echo "退出。"; exit 0 ;;
       *) echo "无效选项,请重新输入。" ;;
     esac
@@ -125,7 +159,7 @@ if [ $# -eq 0 ]; then
   else
     echo "错误: 没有交互终端(stdin 不是 tty),也没有传子命令,不能进菜单——" >&2
     echo "菜单靠 read 等键盘输入,非交互环境下 read 会一直读到 EOF,变成死循环。" >&2
-    echo "用法: $0 [deploy|status|logs]" >&2
+    echo "用法: $0 [deploy|status|logs|uninstall]" >&2
     exit 1
   fi
 else
@@ -133,6 +167,7 @@ else
     deploy) cmd_deploy ;;
     status) cmd_status ;;
     logs) cmd_logs ;;
-    *) echo "用法: $0 [deploy|status|logs]" >&2; exit 1 ;;
+    uninstall) cmd_uninstall ;;
+    *) echo "用法: $0 [deploy|status|logs|uninstall]" >&2; exit 1 ;;
   esac
 fi
