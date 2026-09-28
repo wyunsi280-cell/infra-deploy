@@ -250,29 +250,50 @@ cmd_credentials() {
 }
 
 cmd_create_index() {
+  # 跟 cmd_credentials 不一样:"建索引"是一个已知密码就能做的操作,不是
+  # "忘了密码去问服务器要"那种必须有主机权限才能做的事,所以这里不走
+  # docker exec 抄近路,改成跟 license-ctl.sh 一样纯走公网 HTTPS——脚本
+  # 运行的机器不需要有这套 devpi 的 docker 访问权限,不需要跟 devpi 是同一台
+  # 机器,以后 devpi 真的搬到独立服务器也不用改这个命令。
+  if ! command -v devpi >/dev/null 2>&1; then
+    echo "错误: 没找到 devpi 命令,先装一下: pip install devpi-client (或 uv tool install devpi-client)" >&2
+    return 1
+  fi
+
   local index_name="${1:-}"
   if [ -z "${index_name}" ]; then
     read -r -p "新建索引名(比如 test,不确定要不要就直接想想名字,不要跟 prod 重了): " index_name
   fi
   [ -z "${index_name}" ] && { echo "取消。"; return; }
 
-  local password
-  password="$(get_vendor_password)"
-  if [ -z "${password}" ]; then
-    echo "查不到 vendor 密码——devpi 容器没在跑?" >&2
+  local server_url="${DEVPI_URL:-}"
+  if [ -z "${server_url}" ] && [ -t 0 ]; then
+    read -r -p "devpi 对外地址(比如 https://devpi.example.com): " server_url
+  fi
+  if [ -z "${server_url}" ]; then
+    echo "错误: 没有设置 DEVPI_URL,也没有终端可交互输入,没法继续。" >&2
     return 1
   fi
 
-  # 账号密码直接嵌进 devpi use 的 URL——这台 devpi 已经配了 --outside-url,
-  # 裸的 `devpi use http://localhost:3141` 会被 +api 探测带到外部域名上,
-  # 内部命令没带凭证就会 401(cmd_install 那边也踩过同一个坑,是同一个原因)。
-  docker compose exec -T devpi devpi use "http://vendor:${password}@localhost:3141" >/dev/null
-  docker compose exec -T devpi devpi login vendor --password "${password}" >/dev/null
-  if docker compose exec -T devpi devpi index vendor/"${index_name}" >/dev/null 2>&1; then
+  local password="${DEVPI_PASSWORD:-}"
+  if [ -z "${password}" ]; then
+    if [ -t 0 ]; then
+      read -r -s -p "vendor 密码: " password
+      echo
+    else
+      echo "错误: 没有设置 DEVPI_PASSWORD,也没有终端可交互输入,没法继续。" >&2
+      return 1
+    fi
+  fi
+
+  local scheme="${server_url%%://*}" host="${server_url#*://}"
+  devpi use "${scheme}://vendor:${password}@${host}/vendor" >/dev/null
+  devpi login vendor --password "${password}" >/dev/null
+  if devpi index vendor/"${index_name}" >/dev/null 2>&1; then
     echo "vendor/${index_name} 已经存在了,不用重建。"
     return
   fi
-  docker compose exec -T devpi devpi index -c "${index_name}" bases=root/pypi >/dev/null
+  devpi index -c "${index_name}" bases=root/pypi >/dev/null
   echo "已创建索引: vendor/${index_name}"
   echo "跟 vendor/prod 是同一个 vendor 账号密码,只是索引名不一样——发布/消费的时候把 URL 里的 prod 换成 ${index_name} 就行。"
 }
@@ -391,16 +412,18 @@ if [ $# -eq 0 ]; then
     exit 1
   fi
 else
-  require_docker
+  # create-index 不需要 docker——它现在走公网 HTTPS,不再要求跟 devpi 是
+  # 同一台机器,其他子命令(装/卸载/查状态/管协作者账号)本质上都是"操作这台
+  # 机器上的容器/本地文件",天然离不开本机 docker,继续要求。
   case "$1" in
-    install) cmd_install ;;
-    status) cmd_status ;;
-    credentials) cmd_credentials ;;
-    consumer-add) shift; cmd_consumer_add "$@" ;;
-    consumer-list) cmd_consumer_list ;;
-    consumer-remove) shift; cmd_consumer_remove "$@" ;;
     create-index) shift; cmd_create_index "$@" ;;
-    uninstall) cmd_uninstall ;;
+    install) require_docker; cmd_install ;;
+    status) require_docker; cmd_status ;;
+    credentials) require_docker; cmd_credentials ;;
+    consumer-add) require_docker; shift; cmd_consumer_add "$@" ;;
+    consumer-list) require_docker; cmd_consumer_list ;;
+    consumer-remove) require_docker; shift; cmd_consumer_remove "$@" ;;
+    uninstall) require_docker; cmd_uninstall ;;
     *) echo "用法: $0 [install|status|credentials|consumer-add|consumer-list|consumer-remove|create-index|uninstall]" >&2; exit 1 ;;
   esac
 fi
