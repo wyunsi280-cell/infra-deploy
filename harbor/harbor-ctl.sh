@@ -366,7 +366,14 @@ show_menu() {
 }
 
 if [ $# -eq 0 ]; then
-  show_menu
+  if [ -t 0 ]; then
+    show_menu
+  else
+    echo "错误: 没有交互终端(stdin 不是 tty),也没有传子命令,不能进菜单——" >&2
+    echo "菜单靠 read 等键盘输入,非交互环境下 read 会一直读到 EOF,变成死循环。" >&2
+    usage
+    exit 1
+  fi
 fi
 
 case "$1" in

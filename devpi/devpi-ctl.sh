@@ -375,8 +375,15 @@ mkdir -p "${DEVPI_HOME}"
 cd "${DEVPI_HOME}"
 
 if [ $# -eq 0 ]; then
-  require_docker
-  show_menu
+  if [ -t 0 ]; then
+    require_docker
+    show_menu
+  else
+    echo "错误: 没有交互终端(stdin 不是 tty),也没有传子命令,不能进菜单——" >&2
+    echo "菜单靠 read 等键盘输入,非交互环境下 read 会一直读到 EOF,变成死循环。" >&2
+    echo "用法: $0 [install|status|credentials|consumer-add|consumer-list|consumer-remove|create-index|uninstall]" >&2
+    exit 1
+  fi
 else
   require_docker
   case "$1" in
