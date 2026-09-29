@@ -31,13 +31,26 @@ write_compose_file() {
   cat > docker-compose.deploy.yml << 'EOF'
 services:
   admin-platform:
-    image: ${HARBOR_REGISTRY:-harbor.touks.eu.org}/admin-platform/admin-platform:${IMAGE_TAG:?需要设置 IMAGE_TAG 环境变量}
+    image: ${HARBOR_REGISTRY:-harbor.touks.eu.org}/admin-platform/admin-platform:${IMAGE_TAG:?需要设置 IMAGE_TAG 环境变量,见 .env.deploy}
     env_file:
       - .env
     ports:
       - "${HOST_PORT:-8000}:8000"
     restart: unless-stopped
 EOF
+}
+
+# docker compose 自己解析 compose 文件里的 ${IMAGE_TAG} 这类变量,靠的是
+# --env-file(不是 env_file: 那个把变量传进*容器*的指令,是两回事)——只有
+# cmd_deploy 那次调用手动 export 了 HARBOR_REGISTRY/IMAGE_TAG 不够,status/
+# logs/uninstall 这些命令重新跑这份脚本时不会重新问一遍 tag,所以要把这两个
+# 值也持久化,存在跟 .env(业务配置,会被 env_file 指令传进容器)分开的
+# .env.deploy 里——避免 HARBOR_REGISTRY/IMAGE_TAG 这种部署元数据被当成应用
+# 环境变量传进容器。
+compose() {
+  local env_file_args=()
+  [ -f .env.deploy ] && env_file_args=(--env-file .env.deploy)
+  docker compose "${env_file_args[@]}" -f docker-compose.deploy.yml "$@"
 }
 
 _prompt_required() {
@@ -106,12 +119,16 @@ cmd_deploy() {
   fi
 
   write_compose_file
+  {
+    echo "HARBOR_REGISTRY=${registry}"
+    echo "IMAGE_TAG=${image_tag}"
+  } > .env.deploy
 
   echo "==> 拉取镜像(${registry}/admin-platform/admin-platform:${image_tag})"
-  HARBOR_REGISTRY="${registry}" IMAGE_TAG="${image_tag}" docker compose -f docker-compose.deploy.yml pull
+  compose pull
 
   echo "==> 启动/更新容器"
-  HARBOR_REGISTRY="${registry}" IMAGE_TAG="${image_tag}" docker compose -f docker-compose.deploy.yml up -d
+  compose up -d
 
   echo ""
   echo "==================================================="
@@ -140,10 +157,15 @@ cmd_update_app_config() {
   echo "REDIS=${cur_redis}"
   echo ""
 
-  local instance_key databases redis_conf
-  read -r -p "新的 CORE_INSTANCE_KEY(直接回车保留现有的): " instance_key
-  read -r -p "新的 DATABASES(直接回车保留现有的): " databases
-  read -r -p "新的 REDIS(直接回车保留现有的): " redis_conf
+  # 非交互场景(比如自动化脚本调这个子命令)靠 NEW_* 环境变量传新值,不设的话
+  # 保留现有值,不会像其它必填项那样报错退出——"什么都不传"对"更新配置"这个
+  # 操作来说是合法输入(就是不改)。
+  local instance_key="${NEW_CORE_INSTANCE_KEY:-}" databases="${NEW_DATABASES:-}" redis_conf="${NEW_REDIS:-}"
+  if [ -t 0 ]; then
+    [ -z "${instance_key}" ] && read -r -p "新的 CORE_INSTANCE_KEY(直接回车保留现有的): " instance_key
+    [ -z "${databases}" ] && read -r -p "新的 DATABASES(直接回车保留现有的): " databases
+    [ -z "${redis_conf}" ] && read -r -p "新的 REDIS(直接回车保留现有的): " redis_conf
+  fi
 
   {
     echo "CORE_INSTANCE_KEY=${instance_key:-${cur_key}}"
@@ -153,17 +175,17 @@ cmd_update_app_config() {
 
   echo "==> 配置已更新,重启容器生效"
   [ -f docker-compose.deploy.yml ] || write_compose_file
-  docker compose -f docker-compose.deploy.yml up -d
+  compose up -d
 }
 
 cmd_status() {
   [ -f docker-compose.deploy.yml ] || write_compose_file
-  docker compose -f docker-compose.deploy.yml ps
+  compose ps
 }
 
 cmd_logs() {
   [ -f docker-compose.deploy.yml ] || write_compose_file
-  docker compose -f docker-compose.deploy.yml logs --tail 50 -f
+  compose logs --tail 50 -f
 }
 
 cmd_uninstall() {
@@ -186,7 +208,7 @@ cmd_uninstall() {
 
   [ -f docker-compose.deploy.yml ] || write_compose_file
   echo "==> 停止并删除容器"
-  docker compose -f docker-compose.deploy.yml down 2>/dev/null || true
+  compose down 2>/dev/null || true
 
   echo "==> 删除操作目录 ${ADMIN_PLATFORM_HOME}"
   local target="${ADMIN_PLATFORM_HOME}"
@@ -227,7 +249,7 @@ if [ $# -eq 0 ]; then
   else
     echo "错误: 没有交互终端(stdin 不是 tty),也没有传子命令,不能进菜单——" >&2
     echo "菜单靠 read 等键盘输入,非交互环境下 read 会一直读到 EOF,变成死循环。" >&2
-    echo "用法: $0 [deploy|status|logs|uninstall]" >&2
+    echo "用法: $0 [deploy|status|logs|update-config|uninstall]" >&2
     exit 1
   fi
 else
@@ -235,7 +257,8 @@ else
     deploy) cmd_deploy ;;
     status) cmd_status ;;
     logs) cmd_logs ;;
+    update-config) cmd_update_app_config ;;
     uninstall) cmd_uninstall ;;
-    *) echo "用法: $0 [deploy|status|logs|uninstall]" >&2; exit 1 ;;
+    *) echo "用法: $0 [deploy|status|logs|update-config|uninstall]" >&2; exit 1 ;;
   esac
 fi
