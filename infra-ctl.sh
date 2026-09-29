@@ -23,6 +23,7 @@ show_menu() {
     echo "2) devpi(私有 Python 包索引)"
     echo "3) license 的 key 管理(签发/查询/吊销/恢复)"
     echo "4) license-system 部署/更新(拉Harbor镜像跑起来)"
+    echo "5) admin-platform 部署/更新(发给客户在客户服务器上跑)"
     echo "0) 退出"
     echo "==============================================="
     read -r -p "请输入序号: " choice
@@ -31,6 +32,7 @@ show_menu() {
       2) bash -c "$(curl -fsSL "${RAW_BASE}/devpi/devpi-ctl.sh")" ;;
       3) bash -c "$(curl -fsSL "${RAW_BASE}/license/license-ctl.sh")" ;;
       4) bash -c "$(curl -fsSL "${RAW_BASE}/license/license-deploy.sh")" ;;
+      5) bash -c "$(curl -fsSL "${RAW_BASE}/admin-platform/admin-platform-deploy.sh")" ;;
       0) echo "退出。"; exit 0 ;;
       *) echo "无效选项,请重新输入。" ;;
     esac
