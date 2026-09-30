@@ -12,8 +12,42 @@
 # 目录的 .env 里,得跨次运行记住,不然每次重新curl一遍等于换了个空目录,
 # 之前生成的 ADMIN_TOKEN 就"找不到"了(容器本身没事,数据卷还在,只是脚本
 # 自己找不到本地这份配置)。
+#
+# 拉取镜像前强制验证 Cosign 签名(验不过直接拒绝部署,没有跳过选项)——公钥
+# 写死在脚本靠前位置的 COSIGN_PUBLIC_KEY,跟 admin-platform 用同一套密钥。
 
 set -euo pipefail
+
+# 公钥可以公开,直接写死在这里——不是密码,不需要 secret。跟 admin-platform
+# 用同一套密钥(同一个 Harbor,同一个信任根),harbor-ctl.sh 菜单 8 生成。
+COSIGN_PUBLIC_KEY='-----BEGIN PUBLIC KEY-----
+MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE3IHNaobxtYQKeaUPDBkj3WilcAnL
+rBZ8vS394xW7EZ6O+pcWxV8Ku1r/IQ0pw9I5tLHvySB5CvkOQ3XiQwivCw==
+-----END PUBLIC KEY-----'
+
+ensure_cosign_cli() {
+  if command -v cosign >/dev/null 2>&1; then
+    COSIGN_BIN=cosign
+    return
+  fi
+  echo "==> 没检测到 cosign 命令行工具,下载一份到 ${LICENSE_HOME}"
+  curl -sL -o cosign "https://github.com/sigstore/cosign/releases/latest/download/cosign-linux-amd64"
+  chmod +x cosign
+  COSIGN_BIN="./cosign"
+}
+
+# 验证不过直接 exit,不给"跳过验证继续部署"这个选项——原因跟
+# admin-platform-deploy.sh 一样:这不是可选的安全建议,是强制拦截。
+verify_image_signature() {
+  local image_ref="$1"
+  ensure_cosign_cli
+  echo "==> 验证镜像签名(Cosign): ${image_ref}"
+  if ! "${COSIGN_BIN}" verify --key <(printf '%s' "${COSIGN_PUBLIC_KEY}") "${image_ref}" >/dev/null 2>&1; then
+    echo "错误: 镜像签名验证失败——${image_ref} 不是用受信任的私钥签的。拒绝部署。" >&2
+    exit 1
+  fi
+  echo "==> 签名验证通过"
+}
 
 LICENSE_HOME="${LICENSE_HOME:-${HOME}/infra/license-system}"
 mkdir -p "${LICENSE_HOME}"
@@ -63,6 +97,8 @@ cmd_deploy() {
     fi
   fi
   echo "${harbor_password}" | docker login "${registry}" -u admin --password-stdin
+
+  verify_image_signature "${registry}/internal/license-system:latest"
 
   if [ ! -f .env ]; then
     echo "==> 没找到 .env(${LICENSE_HOME}/.env),当作第一次部署,生成 ADMIN_TOKEN"
