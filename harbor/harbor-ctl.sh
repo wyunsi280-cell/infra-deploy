@@ -23,6 +23,7 @@ fi
 HARBOR_VERSION="${HARBOR_VERSION:-v2.15.2}"
 INSTALL_DIR="${HARBOR_INSTALL_DIR:-$HOME/harbor-install}"
 HARBOR_DIR="${INSTALL_DIR}/harbor"
+COSIGN_DIR="${INSTALL_DIR}/cosign"
 
 usage() {
   sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//'
@@ -260,6 +261,68 @@ cmd_robot_revoke() {
   echo "已吊销 robot id ${robot_id}"
 }
 
+ensure_cosign_cli() {
+  if command -v cosign >/dev/null 2>&1; then
+    return
+  fi
+  echo "==> 没检测到 cosign 命令行工具,下载一份到 /usr/local/bin"
+  curl -sL -o /tmp/cosign "https://github.com/sigstore/cosign/releases/latest/download/cosign-linux-amd64"
+  chmod +x /tmp/cosign
+  mv /tmp/cosign /usr/local/bin/cosign
+}
+
+cmd_cosign_keygen() {
+  ensure_cosign_cli
+  mkdir -p "${COSIGN_DIR}"
+
+  if [ -f "${COSIGN_DIR}/cosign.key" ]; then
+    echo "警告:${COSIGN_DIR}/cosign.key 已经存在——重新生成会导致所有已经用旧密钥"
+    echo "签过名的镜像,换新公钥去验证全部会失败(等于之前签的全部作废,客户端"
+    echo "部署脚本里写死的公钥也要跟着换,还没顺手换掉之前会拒绝拉取任何镜像)。"
+    read -r -p "确认要覆盖生成新的吗?输入大写 DELETE 继续,其他任意输入取消: " confirm
+    if [ "${confirm}" != "DELETE" ]; then
+      echo "已取消,没有做任何改动。"
+      return
+    fi
+    rm -f "${COSIGN_DIR}/cosign.key" "${COSIGN_DIR}/cosign.pub"
+  fi
+
+  # cosign generate-key-pair 原生认 COSIGN_PASSWORD 这个环境变量,设了就不会
+  # 再交互问一遍——用来加密私钥文件,以后 CI 签名时同一个密码也要传。
+  local password="${COSIGN_PASSWORD:-}"
+  if [ -z "${password}" ] && [ -t 0 ]; then
+    read -r -s -p "设置私钥保护密码(加密私钥文件用,以后 CI 签名要用同一个,记好): " password
+    echo
+  fi
+  if [ -z "${password}" ]; then
+    echo "错误: 没有设置 COSIGN_PASSWORD,也没有终端可交互输入。" >&2
+    return 1
+  fi
+
+  (cd "${COSIGN_DIR}" && COSIGN_PASSWORD="${password}" cosign generate-key-pair)
+
+  echo ""
+  echo "==================================================="
+  echo "Cosign 密钥已生成: ${COSIGN_DIR}/cosign.key(私钥,已加密)/ cosign.pub(公钥)"
+  echo ""
+  echo "公钥内容(可以公开,写进 admin-platform-deploy.sh 里用来验证签名):"
+  cat "${COSIGN_DIR}/cosign.pub"
+  echo ""
+  echo "接下来:"
+  echo "  1. cosign.key 的内容 + 刚才设的密码,去各个产品仓库用 project-ctl.ps1"
+  echo "     同步成 COSIGN_PRIVATE_KEY / COSIGN_PASSWORD 这两个 GitHub secret"
+  echo "  2. 上面这段公钥内容,替换进 admin-platform-deploy.sh 里的 COSIGN_PUBLIC_KEY"
+  echo "==================================================="
+}
+
+cmd_cosign_show_pubkey() {
+  if [ ! -f "${COSIGN_DIR}/cosign.pub" ]; then
+    echo "还没生成过 Cosign 密钥,先跑菜单里的生成选项。" >&2
+    return 1
+  fi
+  cat "${COSIGN_DIR}/cosign.pub"
+}
+
 # 列出 Harbor 现有项目供选择,选完把结果放进全局变量 PICKED_PROJECT
 # 用户选"返回"或取消时 PICKED_PROJECT 会是空字符串,调用方要检查这个再继续
 pick_project() {
@@ -328,6 +391,8 @@ show_menu() {
     echo "5) 查看所有客户 key"
     echo "6) 吊销某个客户 key"
     echo "7) 卸载 Harbor(危险操作,不可恢复,会多次确认)"
+    echo "8) 生成/重新生成 Cosign 镜像签名密钥"
+    echo "9) 查看 Cosign 公钥(丢了/要贴进部署脚本时用)"
     echo "0) 退出"
     echo "=================================================="
     read -r -p "请输入序号: " choice
@@ -359,6 +424,8 @@ show_menu() {
         cmd_robot_revoke "${menu_robot_id}" || echo "❌ 吊销失败,请看上面的报错信息。"
         ;;
       7) cmd_uninstall ;;
+      8) cmd_cosign_keygen || echo "❌ 生成失败,请看上面的报错信息。" ;;
+      9) cmd_cosign_show_pubkey || echo "❌ 查看失败,请看上面的报错信息。" ;;
       0) echo "退出。"; exit 0 ;;
       *) echo "无效选项,请重新输入。" ;;
     esac
@@ -384,5 +451,7 @@ case "$1" in
   robot-create) shift; cmd_robot_create "$@" ;;
   robot-list) shift; cmd_robot_list "$@" ;;
   robot-revoke) shift; cmd_robot_revoke "$@" ;;
+  cosign-keygen) cmd_cosign_keygen ;;
+  cosign-show-pubkey) cmd_cosign_show_pubkey ;;
   *) usage; exit 1 ;;
 esac

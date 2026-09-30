@@ -9,6 +9,9 @@
 #   - CORE_INSTANCE_KEY(license key)、DATABASES(客户自己的 Postgres 连接串)
 #     这两个是必填的业务配置,不是基础设施密码,第一次部署会问,存进 .env,
 #     以后 update 不用重新输入;改了要用菜单 5 单独更新
+#   - 拉取镜像前强制验证 Cosign 签名(验不过直接拒绝部署,没有跳过选项)——
+#     脚本里的 COSIGN_PUBLIC_KEY 需要换成 harbor-ctl.sh 菜单 8 生成的真实公钥,
+#     还是占位内容的话验证会稳定失败(见脚本靠前位置的 COSIGN_PUBLIC_KEY)
 #
 #   bash -c "$(curl -fsSL https://raw.githubusercontent.com/wyunsi280-cell/infra-deploy/main/admin-platform/admin-platform-deploy.sh)"
 #
@@ -17,6 +20,14 @@
 # 都落在同一个固定目录,跨次运行才找得到。
 
 set -euo pipefail
+
+# 公钥可以公开,直接写死在这里——不是密码,不需要 secret。用 harbor-ctl.sh
+# 菜单 8 生成密钥之后,把那次输出里的 cosign.pub 内容整段替换到这里。
+# 占位内容原样保留的话,验证时会稳定失败(而不是悄悄跳过验证),提醒你还没换。
+COSIGN_PUBLIC_KEY='-----BEGIN PUBLIC KEY-----
+还没生成真实密钥——去 Harbor 服务器跑 harbor-ctl.sh 菜单 8,把输出的公钥内容
+替换掉这整段占位文本(包括 BEGIN/END 这两行)。
+-----END PUBLIC KEY-----'
 
 ADMIN_PLATFORM_HOME="${ADMIN_PLATFORM_HOME:-${HOME}/infra/admin-platform}"
 mkdir -p "${ADMIN_PLATFORM_HOME}"
@@ -51,6 +62,32 @@ compose() {
   local env_file_args=()
   [ -f .env.deploy ] && env_file_args=(--env-file .env.deploy)
   docker compose "${env_file_args[@]}" -f docker-compose.deploy.yml "$@"
+}
+
+ensure_cosign_cli() {
+  if command -v cosign >/dev/null 2>&1; then
+    return
+  fi
+  echo "==> 没检测到 cosign 命令行工具,下载一份到 ${ADMIN_PLATFORM_HOME}"
+  curl -sL -o cosign "https://github.com/sigstore/cosign/releases/latest/download/cosign-linux-amd64"
+  chmod +x cosign
+  COSIGN_BIN="./cosign"
+}
+COSIGN_BIN="cosign"
+
+# 验证不过直接 exit,不给"跳过验证继续部署"这个选项——镜像来源没验证过就不
+# 该跑在客户机器上,这一步不是可选的安全建议,是强制拦截。
+verify_image_signature() {
+  local image_ref="$1"
+  ensure_cosign_cli
+  echo "==> 验证镜像签名(Cosign): ${image_ref}"
+  if ! "${COSIGN_BIN}" verify --key <(printf '%s' "${COSIGN_PUBLIC_KEY}") "${image_ref}" >/dev/null 2>&1; then
+    echo "错误: 镜像签名验证失败——${image_ref} 不是用受信任的私钥签的,或者" >&2
+    echo "  ${ADMIN_PLATFORM_HOME}/admin-platform-deploy.sh 里的 COSIGN_PUBLIC_KEY 还是占位内容没换。" >&2
+    echo "  拒绝部署,不会拉取/启动这个镜像。" >&2
+    exit 1
+  fi
+  echo "==> 签名验证通过"
 }
 
 _prompt_required() {
@@ -98,6 +135,8 @@ cmd_deploy() {
 
   local image_tag
   image_tag="$(_prompt_required "镜像 tag(比如 v0.1.1,发布时 build-and-publish.sh 打的那个)" IMAGE_TAG)"
+
+  verify_image_signature "${registry}/admin-platform/admin-platform:${image_tag}"
 
   if [ ! -f .env ]; then
     echo "==> 没找到 .env(${ADMIN_PLATFORM_HOME}/.env),当作第一次部署,收集应用配置"
