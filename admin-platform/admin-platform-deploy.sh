@@ -25,8 +25,8 @@ set -euo pipefail
 # 菜单 8 生成密钥之后,把那次输出里的 cosign.pub 内容整段替换到这里。
 # 占位内容原样保留的话,验证时会稳定失败(而不是悄悄跳过验证),提醒你还没换。
 COSIGN_PUBLIC_KEY='-----BEGIN PUBLIC KEY-----
-还没生成真实密钥——去 Harbor 服务器跑 harbor-ctl.sh 菜单 8,把输出的公钥内容
-替换掉这整段占位文本(包括 BEGIN/END 这两行)。
+MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE3IHNaobxtYQKeaUPDBkj3WilcAnL
+rBZ8vS394xW7EZ6O+pcWxV8Ku1r/IQ0pw9I5tLHvySB5CvkOQ3XiQwivCw==
 -----END PUBLIC KEY-----'
 
 ADMIN_PLATFORM_HOME="${ADMIN_PLATFORM_HOME:-${HOME}/infra/admin-platform}"
